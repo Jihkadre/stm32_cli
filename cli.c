@@ -1,35 +1,39 @@
 #include "cli.h"
 
-/* Private includes ----------------------------------------------------------*/
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 
-
-/* Private variables ---------------------------------------------------------*/
 static char args[ARG_SIZE][ARG_CHAR_SIZE];
 static uint8_t cli_parser_state = 1;
+
+static void cli_help(char args[ARG_SIZE][ARG_CHAR_SIZE]);
+static void cli_reboot(char args[ARG_SIZE][ARG_CHAR_SIZE]);
+
+static void CLI_Transmit_String(volatile char *data);
+
 
 const CLI_CMD_t CLI_CMD[] = {
     /* command          function. */
     {"help",            cli_help},
     {"reboot",          cli_reboot},
 };
-/* Private macro -------------------------------------------------------------*/
+
+
 #define cli_parser_run cli_parser_state = 0
 #define cli_parser_stop cli_parser_state = 1
 
 
-/* Private function prototypes -----------------------------------------------*/
-static void cli_help(char args[ARG_SIZE][ARG_CHAR_SIZE]);
-static void cli_reboot(char args[ARG_SIZE][ARG_CHAR_SIZE]);
-static void CLI_Transmit_String(USART_TypeDef *USARTx, volatile char *data);
+USART_TypeDef *CLI_USART_INSTANCE;
 
 
-
-void CLI_Init(void){
+void CLI_Init(USART_TypeDef *USARTx){
+	CLI_USART_INSTANCE = USARTx;
 	LL_USART_EnableIT_RXNE(CLI_USART_INSTANCE);
+	LL_mDelay(10);
+	CLI_Transmit_String((void *)cli_hello_msg);
 }
+
 
 void CLI_IT_Handler(void){
 
@@ -43,7 +47,13 @@ void CLI_IT_Handler(void){
 		data = LL_USART_ReceiveData8(CLI_USART_INSTANCE);
 		rx_buffer[rx_buffer_len++] = data;
 
-		//XXX (IDK why) If the data sent exceeds the size of ARG_CHAR_SIZE, the program will generate hard fault.
+		if(rx_buffer_len > ARG_CHAR_SIZE){
+			memset(rx_buffer, 0, ARG_CHAR_SIZE);
+			memset(&data, 0, sizeof(uint8_t));
+			rx_buffer_len = 0;
+			CLI_Transmit_String("USART Receiver Buffer overflow\r\nMust be max = 20 Byte\r\n");
+		}
+
 		if(('\r' == data) || (' ' == data)){
 
 			memcpy(args[args_c] ,rx_buffer,rx_buffer_len - 1);
@@ -62,7 +72,6 @@ void CLI_IT_Handler(void){
 }
 
 
-
 void CLI_Parse(void){
     if(cli_parser_state)
         return;
@@ -77,36 +86,31 @@ void CLI_Parse(void){
     }
 
     if (!command_found) {
-        CLI_Transmit_String(CLI_USART_INSTANCE, "Unknown command\r\n");
+        CLI_Transmit_String("Unknown command\r\n\r\n");
     }
 
     cli_parser_stop;
 }
 
 
-
-static void CLI_Transmit_String(USART_TypeDef *USARTx, volatile char *data){
+static void CLI_Transmit_String(volatile char *data){
     while(*data){
-        while(!LL_USART_IsActiveFlag_TXE(USARTx)); //Check Transmit Data Register is empty
-        LL_USART_TransmitData8(USARTx, (uint8_t)*data); //Send the char
+        while(!LL_USART_IsActiveFlag_TXE(CLI_USART_INSTANCE)); //Check Transmit Data Register is empty
+        LL_USART_TransmitData8(CLI_USART_INSTANCE, (uint8_t)*data); //Send the char
         data++; //Next character
     }
 }
 
 
-
-const char CLI_Help[] =
-    "This is the simple help message\r\n"
-	"STM32 Based CLI (Command Line Interface)\r\n";
 static void cli_help(char args[ARG_SIZE][ARG_CHAR_SIZE]) {
-    CLI_Transmit_String(CLI_USART_INSTANCE,(void *)CLI_Help);
-
+    CLI_Transmit_String((void *)cli_help_msg);
 }
 
 
 static void cli_reboot(char args[ARG_SIZE][ARG_CHAR_SIZE]) {
-    CLI_Transmit_String(CLI_USART_INSTANCE, "Reboot command executed\r\n");
-    CLI_Transmit_String(CLI_USART_INSTANCE, args[1]);
+    CLI_Transmit_String("Reboot command executed\r\n\r\n");
+    LL_mDelay(10);
+    NVIC_SystemReset();
 }
 
 
