@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 static char args[ARG_SIZE][ARG_CHAR_SIZE];
 static uint8_t cli_parser_state = 1;
@@ -11,7 +13,6 @@ static void cli_help(char args[ARG_SIZE][ARG_CHAR_SIZE]);
 static void cli_reboot(char args[ARG_SIZE][ARG_CHAR_SIZE]);
 
 static void CLI_Transmit_String(volatile char *data);
-
 
 const CLI_CMD_t CLI_CMD[] = {
     /* command          function. */
@@ -25,6 +26,22 @@ const CLI_CMD_t CLI_CMD[] = {
 
 
 USART_TypeDef *CLI_USART_INSTANCE;
+
+
+int cli_printf(const char *__restrict format, ...) {
+    char buffer[256];
+    va_list args;
+    va_start(args, format);
+
+    vsnprintf(buffer, sizeof(buffer), format, args);
+
+    CLI_Transmit_String(buffer);
+
+    va_end(args);
+    return 0;
+}
+
+
 
 
 void CLI_Init(USART_TypeDef *USARTx){
@@ -51,7 +68,7 @@ void CLI_IT_Handler(void){
 			memset(rx_buffer, 0, ARG_CHAR_SIZE);
 			memset(&data, 0, sizeof(uint8_t));
 			rx_buffer_len = 0;
-			CLI_Transmit_String("USART Receiver Buffer overflow\r\nMust be max = 20 Byte\r\n");
+			cli_printf("USART Receiver Buffer overflow\r\nMust be max = %d Byte\r\n",ARG_CHAR_SIZE);
 		}
 
 		if(('\r' == data) || (' ' == data)){

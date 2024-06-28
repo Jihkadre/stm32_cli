@@ -3,8 +3,10 @@
 #include "stm32f4xx.h"
 #include "stm32f4xx_ll_usart.h"
 
-#define ARG_CHAR_SIZE 20
-#define ARG_SIZE	  5
+
+#define ARG_CHAR_SIZE 25
+#define ARG_SIZE 5
+
 
 extern void LL_mDelay(uint32_t Delay);
 
