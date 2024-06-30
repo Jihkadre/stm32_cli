@@ -6,15 +6,15 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-static char args[ARG_SIZE][ARG_CHAR_SIZE];
-static uint8_t cli_parser_state = 1;
+static char args[ARG_SIZE][ARG_CHAR_SIZE] = {0};
+static uint8_t cli_parser_state = 0;
 
-static void cli_help(char args[ARG_SIZE][ARG_CHAR_SIZE]);
-static void cli_reboot(char args[ARG_SIZE][ARG_CHAR_SIZE]);
+static void cli_help(const char args[ARG_SIZE][ARG_CHAR_SIZE],const int q);
+static void cli_reboot(const char args[ARG_SIZE][ARG_CHAR_SIZE],const int q);
 
-static void CLI_Transmit_String(volatile char *data);
+static void cli_transmit_string(const char *data);
 
-const CLI_CMD_t CLI_CMD[] = {
+static const CLI_CMD_t CLI_CMD[] = {
     /* command          function. */
     {"help",            cli_help},
     {"reboot",          cli_reboot},
@@ -25,9 +25,6 @@ const CLI_CMD_t CLI_CMD[] = {
 #define cli_parser_stop cli_parser_state = 1
 
 
-USART_TypeDef *CLI_USART_INSTANCE;
-
-
 int cli_printf(const char *__restrict format, ...) {
     char buffer[256];
     va_list args;
@@ -35,24 +32,22 @@ int cli_printf(const char *__restrict format, ...) {
 
     vsnprintf(buffer, sizeof(buffer), format, args);
 
-    CLI_Transmit_String(buffer);
+    cli_transmit_string(buffer);
 
     va_end(args);
     return 0;
 }
 
 
-
-
-void CLI_Init(USART_TypeDef *USARTx){
-	CLI_USART_INSTANCE = USARTx;
+void cli_init(void){
 	LL_USART_EnableIT_RXNE(CLI_USART_INSTANCE);
+	cli_parser_stop;
 	LL_mDelay(10);
-	CLI_Transmit_String((void *)cli_hello_msg);
+	cli_transmit_string(cli_hello_msg);
 }
 
 
-void CLI_IT_Handler(void){
+void cli_it_handler(void){
 
 	if (LL_USART_IsActiveFlag_RXNE(CLI_USART_INSTANCE)){
 
@@ -79,7 +74,7 @@ void CLI_IT_Handler(void){
 			rx_buffer_len = 0;
 			args_c++;
 
-			if(('\r' == data)){
+			if('\r' == data){
 				args_c = 0;
 				cli_parser_run;
 			}
@@ -89,28 +84,30 @@ void CLI_IT_Handler(void){
 }
 
 
-void CLI_Parse(void){
+void cli_parse(void){
     if(cli_parser_state)
         return;
 
     uint8_t command_found = 0;
-    for(size_t i = 0; i < sizeof(CLI_CMD) / sizeof(CLI_CMD[0]); i++){
-        if(strcmp(CLI_CMD[i].pCmd, args[0]) == 0){
-            CLI_CMD[i].pFun(args);
-            command_found = 1;
-            break;
-        }
+    for(int i = 0; i < sizeof(CLI_CMD) / sizeof(CLI_CMD[0]); i++){
+		for(int j = 0; j < ARG_SIZE; j++){
+			if(strcmp(CLI_CMD[i].pCmd, args[j]) == 0){
+				CLI_CMD[i].pFun(args,j);
+				command_found = 1;
+				break;
+			}
+		}
     }
 
-    if (!command_found) {
-        CLI_Transmit_String("Unknown command\r\n\r\n");
-    }
+    if (!command_found)
+    	cli_transmit_string("Unknown command\r\n\r\n");
+
 
     cli_parser_stop;
 }
 
 
-static void CLI_Transmit_String(volatile char *data){
+static void cli_transmit_string(const char *data){
     while(*data){
         while(!LL_USART_IsActiveFlag_TXE(CLI_USART_INSTANCE)); //Check Transmit Data Register is empty
         LL_USART_TransmitData8(CLI_USART_INSTANCE, (uint8_t)*data); //Send the char
@@ -119,13 +116,13 @@ static void CLI_Transmit_String(volatile char *data){
 }
 
 
-static void cli_help(char args[ARG_SIZE][ARG_CHAR_SIZE]) {
-    CLI_Transmit_String((void *)cli_help_msg);
+static void cli_help(const char args[ARG_SIZE][ARG_CHAR_SIZE], const int q) {
+	cli_transmit_string(cli_help_msg);
 }
 
 
-static void cli_reboot(char args[ARG_SIZE][ARG_CHAR_SIZE]) {
-    CLI_Transmit_String("Reboot command executed\r\n\r\n");
+static void cli_reboot(const char args[ARG_SIZE][ARG_CHAR_SIZE],const int q) {
+	cli_transmit_string("Reboot command executed\r\n\r\n");
     LL_mDelay(10);
     NVIC_SystemReset();
 }
